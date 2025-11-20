@@ -1,1 +1,135 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>WhatsApp Cloud Panel (Demo)</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#111; color:#eee; padding:20px; }
+    .container { max-width:900px; margin:0 auto; background:#1a1a1a; padding:20px; border-radius:8px; box-shadow:0 6px 30px rgba(0,0,0,0.6); }
+    h1 { color:#fff; }
+    input, textarea, select { width:100%; padding:10px; margin:6px 0 12px; border-radius:6px; border:1px solid #333; background:#222; color:#eee; }
+    button { padding:10px 16px; border-radius:6px; border:none; cursor:pointer; background:#007bff; color:#fff; }
+    .row { display:flex; gap:10px; }
+    .col { flex:1; }
+    pre { background:#000; padding:10px; border-radius:6px; overflow:auto; max-height:300px; }
+    label { font-weight:600; }
+    .small { font-size:13px; color:#aaa; }
+    .section { margin-top:20px; padding-top:10px; border-top:1px solid #222; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>WhatsApp Cloud Panel — Demo</h1>
+    <p class="small">Use your Phone ID and Access Token in a .env file. This is a demo panel for single send, bulk send (upload .txt), templates and logs.</p>
 
+    <div class="section">
+      <h3>Send Single Message</h3>
+      <form id="singleForm">
+        <label>Recipient (with country code):</label>
+        <input id="toSingle" placeholder="9198XXXXXXXX" required />
+        <label>Message:</label>
+        <textarea id="messageSingle">Hello from WhatsApp Cloud Panel (demo)</textarea>
+        <button type="submit">Send</button>
+      </form>
+      <div id="singleResult"></div>
+    </div>
+
+    <div class="section">
+      <h3>Bulk Send (upload .txt with one number per line)</h3>
+      <form id="bulkForm" enctype="multipart/form-data">
+        <label>Numbers File (.txt):</label>
+        <input type="file" id="numbersFile" accept=".txt" />
+        <label>Message:</label>
+        <textarea id="bulkMessage">Hello — this is a bulk demo message.</textarea>
+        <button type="submit">Start Bulk Send</button>
+      </form>
+      <div id="bulkResult"></div>
+    </div>
+
+    <div class="section">
+      <h3>Templates</h3>
+      <div id="templatesBox"></div>
+      <form id="tplForm">
+        <label>Template name:</label><input id="tplName" required />
+        <label>Template text:</label><textarea id="tplText" required></textarea>
+        <button type="submit">Add Template</button>
+      </form>
+    </div>
+
+    <div class="section">
+      <h3>Logs</h3>
+      <button id="refreshLogs">Refresh Logs</button>
+      <pre id="logsPre">No logs yet.</pre>
+    </div>
+  </div>
+
+  <script>
+    async function postJSON(url, body) {
+      const res = await fetch(url, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body) });
+      return res.json();
+    }
+
+    document.getElementById('singleForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const to = document.getElementById('toSingle').value.trim();
+      const message = document.getElementById('messageSingle').value.trim();
+      document.getElementById('singleResult').innerText = 'Sending...';
+      try {
+        const resp = await postJSON('/api/send', { to, message });
+        document.getElementById('singleResult').innerText = JSON.stringify(resp, null, 2);
+      } catch (err) {
+        document.getElementById('singleResult').innerText = String(err);
+      }
+    });
+
+    document.getElementById('bulkForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fileEl = document.getElementById('numbersFile');
+      if (!fileEl.files.length) { alert('Choose a .txt file'); return; }
+      const form = new FormData();
+      form.append('numbers', fileEl.files[0]);
+      form.append('message', document.getElementById('bulkMessage').value);
+      document.getElementById('bulkResult').innerText = 'Uploading and sending...';
+      const res = await fetch('/api/bulk', { method:'POST', body: form });
+      const json = await res.json();
+      document.getElementById('bulkResult').innerText = JSON.stringify(json, null, 2);
+    });
+
+    async function loadTemplates(){
+      const r = await fetch('/api/templates');
+      const j = await r.json();
+      const box = document.getElementById('templatesBox');
+      box.innerHTML = '';
+      j.templates.forEach(t => {
+        const el = document.createElement('div');
+        el.innerHTML = `<strong>${t.name}</strong><div class="small">${t.text}</div><button onclick="useTemplate(${t.id})">Use</button>`;
+        box.appendChild(el);
+      });
+    }
+    window.useTemplate = async (id) => {
+      const r = await fetch('/api/templates');
+      const j = await r.json();
+      const tpl = j.templates.find(t=>t.id===id);
+      if(tpl) document.getElementById('messageSingle').value = tpl.text;
+    }
+    document.getElementById('tplForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('tplName').value;
+      const text = document.getElementById('tplText').value;
+      const r = await postJSON('/api/templates', { name, text });
+      alert('Template added');
+      await loadTemplates();
+    });
+
+    document.getElementById('refreshLogs').addEventListener('click', async ()=>{
+      const r = await fetch('/api/logs');
+      const j = await r.json();
+      document.getElementById('logsPre').textContent = JSON.stringify(j.logs.slice().reverse(), null, 2);
+    });
+
+    // initial load
+    loadTemplates();
+  </script>
+</body>
+</html>
